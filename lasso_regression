@@ -137,7 +137,6 @@ if '__main__' == __name__:
             min_lambd = i - 10
     
     print('最优的lambd值lambd = {},对应的均方误差mse={}'.format(min_lambd,min_mse))
-    plt.plot(list(range(y_predict)),len(y_predict),color = 'red')
     plt.plot(y_predict,color = 'red')
     #获取最优lambd时候的w
     w = lasso_regression(X_train, y_train, lambd= min_lambd )
