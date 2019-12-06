@@ -1,0 +1,155 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Dec  4 17:10:49 2019
+
+@author: Administrator
+"""
+
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import itertools
+from math import exp
+
+import numpy as np
+import matplotlib.pyplot as plt
+    
+
+def load_data(filename):
+    ''' 加载数据
+    '''
+    X, Y = [], []
+    with open(filename, 'r') as f:
+        for line in f:
+            splited_line = [float(i) for i in line.split()]
+            x, y = splited_line[: -1], splited_line[-1]
+            X.append(x)
+            Y.append(y)
+    X, Y = np.matrix(X), np.matrix(Y).T
+    return X, Y
+
+def standarize(X):
+    ''' 中心化 & 标准化数据 (零均值, 单位标准差)
+    '''
+    std_deviation = np.std(X, 0)
+    mean = np.mean(X, 0)
+    return (X - mean)/std_deviation
+
+
+def get_corrcoef(X, Y):
+    # X Y 的协方差
+    cov = np.mean(X*Y) - np.mean(X)*np.mean(Y)
+    return cov/(np.var(X)*np.var(Y))**0.5
+
+def lasso_regression(X, y, lambd=0.2, threshold=0.1):
+    ''' 通过坐标下降(coordinate descent)法获取LASSO回归系数
+    '''
+    # 计算残差平方和
+    rss = lambda X, y, w: (y - X*w).T*(y - X*w)
+    #定义一个b获取最小的delta从而获取对应的lambda值
+    # 初始化回归系数w.
+    m, n = X.shape
+    w = np.matrix(np.zeros((n, 1)))
+    r = rss(X, y, w)
+    # 使用坐标下降法优化回归系数w
+    niter = itertools.count(1)
+
+    for it in niter:
+        for k in range(n):
+            # 计算常量值z_k和p_k
+            z_k = (X[:, k].T*X[:, k])[0, 0]
+            p_k = 0
+            for i in range(m):
+                p_k += X[i, k]*(y[i, 0] - sum([X[i, j]*w[j, 0] for j in range(n) if j != k]))
+
+            if p_k < -lambd/2:
+                w_k = (p_k + lambd/2)/z_k
+            elif p_k > lambd/2:
+                w_k = (p_k - lambd/2)/z_k
+            else:
+                w_k = 0
+
+            w[k, 0] = w_k
+
+        r_prime = rss(X, y, w)
+        delta = abs(r_prime - r)[0, 0]
+#        if delta < b:
+#            b = delta
+#            min_lambda = lambd
+        r = r_prime
+        print('Iteration: {}, delta = {}'.format(it, delta))
+
+        if delta < threshold:
+            break
+
+    return w
+
+def lasso_traj(X, y, ntest=30):
+    ''' 获取回归系数轨迹矩阵
+    '''
+    _, n = X.shape
+    ws = np.zeros((ntest, n))
+    for i in range(ntest):
+        w = lasso_regression(X, y, lambd=exp(i-10))
+        ws[i, :] = w.T
+        print('lambda = e^({}), w = {}'.format(i-10, w.T[0, :]))
+    return ws
+
+def predict(X,Y,w):
+    #预测函数，用训练好的模型，用测试集X_test，预测y_predict来计算精度
+    y_predict = []
+    sum = 0
+    for i in range(X.shape[0]):
+        s = X[i]*w
+        c = X[i]*w - Y[i]
+        y_predict.append(s[0,0])
+        delta = abs(c[0,0])#计算误差
+        sum = sum + pow(delta,2)
+    mse = sum/X.shape[0]#均方误差
+    return y_predict,mse#返回预测数据y_predict列表和mse均方误差
+        
+
+    
+
+if '__main__' == __name__:
+    X, y = load_data(r'C:\Users\Administrator\Desktop\文档\模式识别\abalone.txt')  
+    X, y = standarize(X), standarize(y)
+    #取80%作为测试集，20%作为训练集
+    ntest = 30
+    min_mse = 100
+    min_lamdb = 0#z用来找到最佳的lambd值
+    num = X.shape[0]
+    X_train = X[:int(0.8*num)]
+    y_train = y[:int(0.8*num),-1]
+    X_test = X[int(0.8*num):]
+    y_test = y[int(0.8*num):,-1]
+#    lambd = get_lambd(X_train,y_train,30)
+#    print('最优的lambd值lambd = {}'.format(lambd))
+#    w = lasso_regression(X_train, y_train, lambd=10 )#选取lambda为10,收敛域为0.1来获取回归系数
+#    y_predict,mse = predict(X_test,y_test,w)
+#    print('均方误差mse = {}'.format(mse))
+    for i in range(ntest):
+        w = lasso_regression(X_train,y_train,lambd = i-10)
+        print('lambda = {},w = {}'.format((i -10),w.T))
+        y_predict,mse = predict(X_test,y_test,w)
+        if mse < min_mse:
+            min_mse = mse
+            min_lambd = i - 10
+    
+    print('最优的lambd值lambd = {},对应的均方误差mse={}'.format(min_lambd,min_mse))
+    plt.plot(list(range(y_predict)),len(y_predict),color = 'red')
+    plt.plot(y_predict,color = 'red')
+    #获取最优lambd时候的w
+    w = lasso_regression(X_train, y_train, lambd= min_lambd )
+#    y_prime = X*w
+    # 计算相关系数
+#    corrcoef = get_corrcoef(np.array(y.reshape(1, -1)),
+#                            np.array(y_prime.reshape(1, -1)))
+#    print('Correlation coefficient: {}'.format(corrcoef))
+    # 绘制回归系数轨迹
+    ws = lasso_traj(X_train, y_train, ntest)
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    lambdas = [i-10 for i in range(ntest)]
+    ax.plot(lambdas, ws)
+    plt.show()
